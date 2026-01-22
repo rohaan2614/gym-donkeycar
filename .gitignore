@@ -110,3 +110,4 @@ ENV/
 .idea/
 ppo_donkey.zip
 runs/*
+unitylog.txt
