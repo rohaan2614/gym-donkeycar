@@ -17,6 +17,8 @@ Do not forgot to run tensorboard like:
 tensorboard --logdir runs --host 127.0.0.1 --port 6006
 """
 
+# TODO: Handle this issue: "UserWarning: Training and eval env are not of the same type<stable_baselines3.common.vec_env.vec_transpose.VecTransposeImage object at 0x78a4a1a9f450> != <stable_baselines3.common.vec_env.dummy_vec_env.DummyVecEnv object at 0x78a47ae3d7d0> warnings.warn("Training and eval env are not of the same type" f"{self.training_env} != {self.eval_env}")"
+
 import argparse
 import os
 import uuid
@@ -25,7 +27,9 @@ from datetime import datetime
 import gym
 import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback
+from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList
+
+from funny_helpers import extract_cte, CTETrainingLogger
 
 if __name__ == "__main__":
     env_list = [
@@ -85,11 +89,11 @@ if __name__ == "__main__":
     parser.add_argument(
         "--early_stopping_threshold",
         type=float,
-        default=300.0,
+        default=1000.0,
         help="threshold for early stopping",
     )
     parser.add_argument(
-        "--model_path",
+        "--model-path",
         type=str,
         default=None,
         help="Path to a trained PPO model (.zip). Required in --test mode.",
@@ -128,7 +132,7 @@ if __name__ == "__main__":
 
     if args.test:
         if args.model_path is None:
-            raise ValueError("--test requires --model_path (e.g. runs/.../best_model.zip)")
+            raise ValueError("--test requires --model-path (e.g. runs/.../best_model.zip)")
         env = gym.make(args.env_name, conf=conf)
         try:
             model = PPO.load(args.model_path)
@@ -137,11 +141,14 @@ if __name__ == "__main__":
             for _ in range(evaluation_timesteps):
                 action, _states = model.predict(obs, deterministic=True)
                 obs, reward, done, info = env.step(action)
+
+                cte = extract_cte(info)
+                if (_ % 20 == 0) and (cte is not None):
+                    print(f"[TEST t={_:06d}] cte={cte:+.3f} reward={reward:.3f}")
+
                 env.render()
                 if done:
                     obs = env.reset()
-
-            print("done testing")
         finally:
             env.close()
 
@@ -162,19 +169,10 @@ if __name__ == "__main__":
                 tensorboard_log=log_dir,
             )
 
-            # eval_callback = EvalCallback(
-            #     env,
-            #     best_model_save_path=log_dir,
-            #     log_path=log_dir,
-            #     eval_freq=eval_freq,
-            #     n_eval_episodes=5,
-            #     deterministic=True,
-            #     render=False,
-            # )
+            stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, verbose=1)
 
-            stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, 
-                                                          verbose=1)
-
+            cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
+            
             eval_callback = EvalCallback(
                 env,  # same env to avoid second sim
                 callback_after_eval=stop_callback,
@@ -186,10 +184,12 @@ if __name__ == "__main__":
                 render=True,
             )
 
+            callback = CallbackList([cte_cb, eval_callback])
+
             model.learn(
                 total_timesteps=training_timesteps,
                 tb_log_name="PPO",
-                callback=eval_callback,
+                callback=callback,
             )
 
             # Save the agent (keeps your original behavior)
@@ -203,3 +203,4 @@ if __name__ == "__main__":
                 env.close()
             except Exception:
                 pass
+
