@@ -4,16 +4,30 @@ author: Tawn Kramer
 date: 13 October 2018
 notes: ppo2 test from stable-baselines here:
 https://github.com/hill-a/stable-baselines
+
+Changes by Rohaan:
+- Register Donkey Envs in Gym
+- Shimmy Installation (requirements.txt)
+- Parser Args for training/testing timesteps
+- Tensorboard
+- Callback & Evaluation Frequency
+
+
+Do not forgot to run tensorboard like:
+tensorboard --logdir runs --host 127.0.0.1 --port 6006
 """
+
 import argparse
+import os
 import uuid
+from datetime import datetime
 
 import gym
+import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import PPO
+from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback
 
 if __name__ == "__main__":
-    # Initialize the donkey environment
-    # where env_name one of:
     env_list = [
         "donkey-warehouse-v0",
         "donkey-generated-roads-v0",
@@ -38,14 +52,55 @@ if __name__ == "__main__":
     parser.add_argument("--test", action="store_true", help="load the trained model and play")
     parser.add_argument("--multi", action="store_true", help="start multiple sims at once")
     parser.add_argument(
-        "--env_name", type=str, default="donkey-warehouse-v0", help="name of donkey sim environment", choices=env_list
+        "--env_name",
+        type=str,
+        default="donkey-warehouse-v0",
+        help="name of donkey sim environment",
+        choices=env_list,
     )
+    parser.add_argument(
+        "--training_timesteps",
+        type=int,
+        default=50000,
+        help="number of timesteps the agent interacts with the environment in training",
+    )
+    parser.add_argument(
+        "--evaluation_timesteps",
+        type=int,
+        default=1000,
+        help="(used only in --test mode) number of timesteps to roll out deterministically",
+    )
+    parser.add_argument(
+        "--evaluation_frequency",
+        type=int,
+        default=10000,
+        help="run evaluation every N training timesteps",
+    )
+    parser.add_argument(
+        "--n_evaluation_episodes",
+        type=int,
+        default=5,
+        help="run evaluation for N episodes",
+    )
+    parser.add_argument(
+        "--early_stopping_threshold",
+        type=float,
+        default=300.0,
+        help="threshold for early stopping",
+    )
+    parser.add_argument(
+        "--model_path",
+        type=str,
+        default=None,
+        help="Path to a trained PPO model (.zip). Required in --test mode.",
+    )
+    parser.add_argument("--max_cte", type=int, default=10, help="maximum cross-track error to fail the episode")
 
     args = parser.parse_args()
 
     if args.sim == "sim_path" and args.multi:
         print("you must supply the sim path with --sim when running multiple environments")
-        exit(1)
+        raise SystemExit(1)
 
     env_id = args.env_name
 
@@ -61,57 +116,90 @@ if __name__ == "__main__":
         "country": "USA",
         "bio": "Learning to drive w PPO RL",
         "guid": str(uuid.uuid4()),
-        "max_cte": 10,
+        "max_cte": args.max_cte,
     }
 
+    training_timesteps = args.training_timesteps
+    evaluation_timesteps = args.evaluation_timesteps
+    eval_freq = args.evaluation_frequency
+    n_eval_episodes = args.n_evaluation_episodes
+
+    EARLY_STOPPING_THRESHOLD = float(args.early_stopping_threshold)
+
     if args.test:
-        # Make an environment test our trained policy
+        if args.model_path is None:
+            raise ValueError("--test requires --model_path (e.g. runs/.../best_model.zip)")
         env = gym.make(args.env_name, conf=conf)
+        try:
+            model = PPO.load(args.model_path)
 
-        model = PPO.load("ppo_donkey")
+            obs = env.reset()
+            for _ in range(evaluation_timesteps):
+                action, _states = model.predict(obs, deterministic=True)
+                obs, reward, done, info = env.step(action)
+                env.render()
+                if done:
+                    obs = env.reset()
 
-        obs = env.reset()
-        for _ in range(1000):
-            action, _states = model.predict(obs, deterministic=True)
-            obs, reward, done, info = env.step(action)
-            env.render()
-            if done:
-                obs = env.reset()
-
-        print("done testing")
+            print("done testing")
+        finally:
+            env.close()
 
     else:
-        # make gym env
+        run_id = (
+            f"env_{env_id}/max_cte_{args.max_cte}/train_{training_timesteps}/" f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        )
+        log_dir = os.path.join("runs", run_id)
+        os.makedirs(log_dir, exist_ok=True)
+
         env = gym.make(args.env_name, conf=conf)
 
-        # create cnn policy
-        model = PPO("CnnPolicy", env, verbose=1)
+        try:
+            model = PPO(
+                policy="CnnPolicy",
+                env=env,
+                verbose=1,
+                tensorboard_log=log_dir,
+            )
 
-        # set up model in learning mode with goal number of timesteps to complete
-        model.learn(total_timesteps=10000)
+            # eval_callback = EvalCallback(
+            #     env,
+            #     best_model_save_path=log_dir,
+            #     log_path=log_dir,
+            #     eval_freq=eval_freq,
+            #     n_eval_episodes=5,
+            #     deterministic=True,
+            #     render=False,
+            # )
 
-        obs = env.reset()
+            stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, 
+                                                          verbose=1)
 
-        for i in range(1000):
-            action, _states = model.predict(obs, deterministic=True)
+            eval_callback = EvalCallback(
+                env,  # same env to avoid second sim
+                callback_after_eval=stop_callback,
+                best_model_save_path=log_dir,
+                log_path=log_dir,
+                eval_freq=eval_freq,
+                n_eval_episodes=n_eval_episodes,
+                deterministic=True,
+                render=True,
+            )
 
-            obs, reward, done, info = env.step(action)
+            model.learn(
+                total_timesteps=training_timesteps,
+                tb_log_name="PPO",
+                callback=eval_callback,
+            )
 
+            # Save the agent (keeps your original behavior)
+            model.save("ppo_donkey")
+            # Optional: also save into the run directory so each run keeps its model
+            model.save(os.path.join(log_dir, "ppo_donkey"))
+
+        finally:
+            # Close envs cleanly
             try:
-                env.render()
-            except Exception as e:
-                print(e)
-                print("failure in render, continuing...")
-
-            if done:
-                obs = env.reset()
-
-            if i % 100 == 0:
-                print("saving...")
-                model.save("ppo_donkey")
-
-        # Save the agent
-        model.save("ppo_donkey")
-        print("done training")
-
-    env.close()
+                env.close()
+            except Exception:
+                pass

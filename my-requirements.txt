@@ -1,5 +1,4 @@
 stable-baselines3>=2.7.1,<3.0.0
 ipython>=8.0
-gym==0.26.2 # TODO: update to use gymnasium as thats whats used now.
-shimmy>=2.0 # Need this if using gym. Comment out when upgraded to gymnasium
-# gymnasium>=1.2.3,<2.0.0
+gym==0.26.2 
+shimmy>=2.0 

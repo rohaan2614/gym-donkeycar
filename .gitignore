@@ -108,3 +108,5 @@ ENV/
 # editor
 .vscode/
 .idea/
+ppo_donkey.zip
+runs/*
