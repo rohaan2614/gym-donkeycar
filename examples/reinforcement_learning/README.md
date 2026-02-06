@@ -8,6 +8,11 @@
 * To run the trained agent (i.e to exploit), run: 
     
     `(donkey) $ python examples/reinforcement_learning/ppo_train.py --sim /home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64 --env_name donkey-warren-track-v0 --test --model-path runs/env_donkey-warren-track-v0/max_cte_10/train_100000/20260122_153939/best_model.zip`
+
+
+# Tensorboard Server
+
+`tensorboard --logdir runs/`
 <!-- ## ppo_train.py
 
 An example using stable-baselines to train a PPO agent using the gym-donkeycar environment

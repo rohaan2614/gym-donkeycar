@@ -47,3 +47,22 @@ class CTETrainingLogger(BaseCallback):
             # print(f"[TRAIN t={self.num_timesteps:07d}] cte_last={last:+.3f}  |cte|_mean(last200)={mean_abs:.3f}")
 
         return True
+    
+class EpisodeRewardLogger(BaseCallback):
+    def __init__(self):
+        super().__init__()
+        self.ep_reward = 0.0
+    
+    def __reset_reward(self):
+        self.ep_reward = 0.0
+
+    def _on_step(self):
+        self.ep_reward += float(self.locals['rewards'][0])
+
+        dones = self.locals['dones']
+        if dones[0]:
+            self.logger.record('rollout/ep_rew_total', self.ep_reward)
+            self.__reset_reward()
+            
+        
+        return True

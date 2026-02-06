@@ -29,7 +29,11 @@ import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList
 
-from funny_helpers import extract_cte, CTETrainingLogger
+from funny_helpers import extract_cte, CTETrainingLogger, EpisodeRewardLogger
+from names_generator import generate_name
+
+import traceback
+
 
 if __name__ == "__main__":
     env_list = [
@@ -75,15 +79,15 @@ if __name__ == "__main__":
         help="(used only in --test mode) number of timesteps to roll out deterministically",
     )
     parser.add_argument(
-        "--evaluation_frequency",
+        "--eval_freq",
         type=int,
-        default=10000,
+        default=50000,
         help="run evaluation every N training timesteps",
     )
     parser.add_argument(
         "--n_evaluation_episodes",
         type=int,
-        default=5,
+        default=1,
         help="run evaluation for N episodes",
     )
     parser.add_argument(
@@ -99,6 +103,13 @@ if __name__ == "__main__":
         help="Path to a trained PPO model (.zip). Required in --test mode.",
     )
     parser.add_argument("--max_cte", type=int, default=10, help="maximum cross-track error to fail the episode")
+    parser.add_argument(
+        "--run-name",
+        type=str,
+        default=None,
+        help="Optional run name, otherwise auto-generated.",
+    )
+    parser.add_argument("--no-early-stop", action="store_true", help="Disable early stopping.")
 
     args = parser.parse_args()
 
@@ -108,24 +119,26 @@ if __name__ == "__main__":
 
     env_id = args.env_name
 
+    run_name = args.run_name or generate_name()
+
     conf = {
         "exe_path": args.sim,
         "host": "127.0.0.1",
         "port": args.port,
         "body_style": "donkey",
         "body_rgb": (128, 128, 128),
-        "car_name": "me",
+        "car_name": run_name,
         "font_size": 100,
-        "racer_name": "PPO",
+        "racer_name": f"{run_name}_PPO",
         "country": "USA",
-        "bio": "Learning to drive w PPO RL",
+        "bio": "Learning to drive 1 step at a time",
         "guid": str(uuid.uuid4()),
         "max_cte": args.max_cte,
     }
 
     training_timesteps = args.training_timesteps
     evaluation_timesteps = args.evaluation_timesteps
-    eval_freq = args.evaluation_frequency
+    eval_freq = args.eval_freq
     n_eval_episodes = args.n_evaluation_episodes
 
     EARLY_STOPPING_THRESHOLD = float(args.early_stopping_threshold)
@@ -146,20 +159,25 @@ if __name__ == "__main__":
                 if (_ % 20 == 0) and (cte is not None):
                     print(f"[TEST t={_:06d}] cte={cte:+.3f} reward={reward:.3f}")
 
-                env.render()
+                # env.render() # Donkey Sim is already rendering so this is likely redundant.
                 if done:
                     obs = env.reset()
         finally:
             env.close()
 
     else:
-        run_id = (
-            f"env_{env_id}/max_cte_{args.max_cte}/train_{training_timesteps}/" f"{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-        )
+        if int(eval_freq) > 0:
+            error_message = 'eval freq is problematic and needs to be fixed. Please use eval_freq = -1'
+            print(error_message)
+            raise(error_message)
+
+        run_id = f"env_{env_id}/train_{training_timesteps}/{datetime.now().strftime('%Y%m%d_%H%M%S')}/{run_name}"
         log_dir = os.path.join("runs", run_id)
         os.makedirs(log_dir, exist_ok=True)
 
         env = gym.make(args.env_name, conf=conf)
+
+        stop_callback = None
 
         try:
             model = PPO(
@@ -169,10 +187,12 @@ if __name__ == "__main__":
                 tensorboard_log=log_dir,
             )
 
-            stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, verbose=1)
-
             cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
-            
+            ep_reward_logger = EpisodeRewardLogger()
+
+            if not args.no_early_stop:
+                stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, verbose=1)
+
             eval_callback = EvalCallback(
                 env,  # same env to avoid second sim
                 callback_after_eval=stop_callback,
@@ -181,26 +201,37 @@ if __name__ == "__main__":
                 eval_freq=eval_freq,
                 n_eval_episodes=n_eval_episodes,
                 deterministic=True,
-                render=True,
+                render=False,  # Donkey Sim is already rendering so rendering here is likely redundant.
             )
 
-            callback = CallbackList([cte_cb, eval_callback])
+            callback = CallbackList([cte_cb, eval_callback, ep_reward_logger])
+            crash_path = os.path.join(log_dir, "crash_checkpoint")
+            final_path = os.path.join(log_dir, "final")
 
-            model.learn(
-                total_timesteps=training_timesteps,
-                tb_log_name="PPO",
-                callback=callback,
-            )
-
-            # Save the agent (keeps your original behavior)
-            model.save("ppo_donkey")
-            # Optional: also save into the run directory so each run keeps its model
-            model.save(os.path.join(log_dir, "ppo_donkey"))
+            try:
+                model.learn(
+                    total_timesteps=training_timesteps,
+                    tb_log_name="PPO",
+                    callback=callback,
+                )
+            except Exception as e:
+                print("\n[TRAIN] CRASHED:", repr(e))
+                traceback.print_exc()
+                # last-ditch save so we don't lose progress
+                try:
+                    model.save(crash_path)
+                    print(f'Model Saved at: {crash_path}.zip')
+                except Exception as e2:
+                    print('Failed to save model because of exception:', str(e2))
+                raise
+            else:
+                model.save(final_path)
+                print(f'Model (final) Saved at: {final_path}.zip')
 
         finally:
             # Close envs cleanly
             try:
+                print(f'Process Completed. Closing Env.')
                 env.close()
             except Exception:
                 pass
-
