@@ -19,6 +19,10 @@ tensorboard --logdir runs --host 127.0.0.1 --port 6006
 
 # TODO: Handle this issue: "UserWarning: Training and eval env are not of the same type<stable_baselines3.common.vec_env.vec_transpose.VecTransposeImage object at 0x78a4a1a9f450> != <stable_baselines3.common.vec_env.dummy_vec_env.DummyVecEnv object at 0x78a47ae3d7d0> warnings.warn("Training and eval env are not of the same type" f"{self.training_env} != {self.eval_env}")"
 
+# import socket
+# socket.setdefaulttimeout(10.0) # socket timeout when Donkey Simulator stops responding
+
+
 import argparse
 import os
 import uuid
@@ -27,7 +31,7 @@ from datetime import datetime
 import gym
 import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import PPO
-from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList
+from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList, CheckpointCallback
 
 from funny_helpers import extract_cte, CTETrainingLogger, EpisodeRewardLogger
 from names_generator import generate_name
@@ -73,7 +77,7 @@ if __name__ == "__main__":
         help="number of timesteps the agent interacts with the environment in training",
     )
     parser.add_argument(
-        "--evaluation_timesteps",
+        "--eval-timesteps",
         type=int,
         default=1000,
         help="(used only in --test mode) number of timesteps to roll out deterministically",
@@ -127,7 +131,7 @@ if __name__ == "__main__":
         "port": args.port,
         "body_style": "donkey",
         "body_rgb": (128, 128, 128),
-        "car_name": run_name,
+        # "car_name": run_name,
         "font_size": 100,
         "racer_name": f"{run_name}_PPO",
         "country": "USA",
@@ -137,7 +141,7 @@ if __name__ == "__main__":
     }
 
     training_timesteps = args.training_timesteps
-    evaluation_timesteps = args.evaluation_timesteps
+    eval_timesteps = args.eval_timesteps
     eval_freq = args.eval_freq
     n_eval_episodes = args.n_evaluation_episodes
 
@@ -146,12 +150,15 @@ if __name__ == "__main__":
     if args.test:
         if args.model_path is None:
             raise ValueError("--test requires --model-path (e.g. runs/.../best_model.zip)")
+        
+        conf["car_name"] = 'TEST'#f'{conf["car_name"]}_TEST'
+        
         env = gym.make(args.env_name, conf=conf)
         try:
             model = PPO.load(args.model_path)
 
             obs = env.reset()
-            for _ in range(evaluation_timesteps):
+            for _ in range(eval_timesteps):
                 action, _states = model.predict(obs, deterministic=True)
                 obs, reward, done, info = env.step(action)
 
@@ -166,10 +173,12 @@ if __name__ == "__main__":
             env.close()
 
     else:
-        if int(eval_freq) > 0:
+        if int(eval_freq) > -1:
             error_message = 'eval freq is problematic and needs to be fixed. Please use eval_freq = -1'
             print(error_message)
             raise(error_message)
+        
+        conf["car_name"] = run_name
 
         run_id = f"env_{env_id}/train_{training_timesteps}/{datetime.now().strftime('%Y%m%d_%H%M%S')}/{run_name}"
         log_dir = os.path.join("runs", run_id)
@@ -204,7 +213,14 @@ if __name__ == "__main__":
                 render=False,  # Donkey Sim is already rendering so rendering here is likely redundant.
             )
 
-            callback = CallbackList([cte_cb, eval_callback, ep_reward_logger])
+            checkpoint_callback = CheckpointCallback(save_freq=20_000,
+                                                     save_path=log_dir,
+                                                     name_prefix="training_checkpoint",
+                                                     # PPO does not use replay buffer
+                                                     save_replay_buffer=False,
+                                                     save_vecnormalize=False)
+
+            callback = CallbackList([cte_cb, eval_callback, ep_reward_logger, checkpoint_callback])
             crash_path = os.path.join(log_dir, "crash_checkpoint")
             final_path = os.path.join(log_dir, "final")
 
@@ -214,6 +230,7 @@ if __name__ == "__main__":
                     tb_log_name="PPO",
                     callback=callback,
                 )
+                print(f'training completed...')
             except Exception as e:
                 print("\n[TRAIN] CRASHED:", repr(e))
                 traceback.print_exc()
