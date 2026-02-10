@@ -1,5 +1,7 @@
 import numpy as np
 from stable_baselines3.common.callbacks import BaseCallback
+from pathlib import Path
+import os
 
 
 def extract_cte(info: dict):
@@ -64,5 +66,124 @@ class EpisodeRewardLogger(BaseCallback):
             self.logger.record('rollout/ep_rew_total', self.ep_reward)
             self.__reset_reward()
             
-        
         return True
+
+class ActionStatsCallback(BaseCallback):
+    def __init__(self, print_every_steps=500):
+        super().__init__()
+        self.print_every_steps = print_every_steps
+
+    def _on_step(self) -> bool:
+        if self.n_calls % self.print_every_steps == 0:
+            acts = self.locals.get("actions", None)
+            if acts is not None:
+                a = np.array(acts)
+                # expecting action = [steering, throttle]
+                if a.ndim >= 2 and a.shape[-1] >= 2:
+                    print(
+                        f"[ACT] t={self.model.num_timesteps} "
+                        f"steer_mean={a[...,0].mean():+.3f} "
+                        f"thr_mean={a[...,1].mean():+.3f} "
+                        f"thr_min={a[...,1].min():+.3f} "
+                        f"thr_max={a[...,1].max():+.3f}"
+                    )
+        return True
+    
+
+from pathlib import Path
+from typing import Optional, Union
+
+from pathlib import Path
+
+from pathlib import Path
+from typing import Optional, Union
+
+def find_model_dir(
+    keyword: str,
+    root: Union[str, Path] = ".",
+    verbose: bool = False
+) -> Optional[Path]:
+    root = Path(root).resolve()
+    kw = keyword.casefold()
+
+    if verbose:
+        print("Searching under:", root)
+        print("Root exists:", root.exists(), "is_dir:", root.is_dir())
+
+    runs_dir = root / "runs"
+    if verbose:
+        print("runs exists:", runs_dir.exists(), "is_dir:", runs_dir.is_dir())
+
+    for path in root.rglob("*"):
+        if path.is_dir() and kw in path.name.casefold():
+            if verbose:
+                print("FOUND (abs):", path)
+
+            # 🔑 strip the prefix (current dir)
+            rel_path = path.relative_to(root)
+
+            if verbose:
+                print("FOUND (rel):", rel_path)
+
+            return rel_path
+
+    if verbose:
+        print("No match found.")
+    return None
+
+from pathlib import Path
+import re
+from typing import Optional, Union
+
+_CHECKPOINT_PATTERNS = [
+    "*checkpoint*.zip",   # your training_checkpoint_XXXX_steps.zip
+    "*_steps.zip",        # generic
+]
+
+def resolve_model_path_from_run_dir(run_dir: Union[str, Path]) -> Optional[Path]:
+    """
+    Given a run directory, return the best model path:
+      1) final.zip if present
+      2) else the checkpoint zip with the largest step count (parsed from filename)
+      3) else best_model.zip if present
+      4) else None
+    """
+    run_dir = Path(run_dir)
+
+    # 1) final.zip
+    final_zip = run_dir / "final.zip"
+    if final_zip.is_file():
+        return final_zip
+
+    # (optional) common SB3 eval artifact name
+    best_zip = run_dir / "best_model.zip"
+    # don't return it yet; use it as fallback after checkpoints
+
+    # 2) checkpoints
+    candidates: list[Path] = []
+    for pat in _CHECKPOINT_PATTERNS:
+        candidates.extend(run_dir.glob(pat))
+
+    # de-dup
+    candidates = list(dict.fromkeys([p for p in candidates if p.is_file()]))
+
+    if candidates:
+        def step_key(p: Path) -> int:
+            name = p.name
+            # Prefer explicit "(\d+)_steps"
+            m = re.search(r"(\d+)_steps", name)
+            if m:
+                return int(m.group(1))
+            # Otherwise grab the last number in the filename as a fallback
+            nums = re.findall(r"\d+", name)
+            return int(nums[-1]) if nums else -1
+
+        best_ckpt = max(candidates, key=step_key)
+        if step_key(best_ckpt) >= 0:
+            return best_ckpt
+
+    # 3) fallback to best_model.zip if present
+    if best_zip.is_file():
+        return best_zip
+
+    return None

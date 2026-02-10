@@ -33,7 +33,8 @@ import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import PPO
 from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList, CheckpointCallback
 
-from funny_helpers import extract_cte, CTETrainingLogger, EpisodeRewardLogger
+from funny_helpers import (extract_cte, CTETrainingLogger, EpisodeRewardLogger, 
+                           ActionStatsCallback, find_model_dir, resolve_model_path_from_run_dir)
 from names_generator import generate_name
 
 import traceback
@@ -115,6 +116,13 @@ if __name__ == "__main__":
     )
     parser.add_argument("--no-early-stop", action="store_true", help="Disable early stopping.")
 
+    parser.add_argument(
+        "--model-nick",
+        type=str,
+        default=None,
+        help="Optional instead of model path, provide the shorter model-nick.",
+    )
+
     args = parser.parse_args()
 
     if args.sim == "sim_path" and args.multi:
@@ -131,7 +139,6 @@ if __name__ == "__main__":
         "port": args.port,
         "body_style": "donkey",
         "body_rgb": (128, 128, 128),
-        # "car_name": run_name,
         "font_size": 100,
         "racer_name": f"{run_name}_PPO",
         "country": "USA",
@@ -149,13 +156,27 @@ if __name__ == "__main__":
 
     if args.test:
         if args.model_path is None:
-            raise ValueError("--test requires --model-path (e.g. runs/.../best_model.zip)")
+            if args.model_nick:
+                model_dir = find_model_dir(keyword=args.model_nick)
+                if not model_dir:
+                    raise ValueError(f"Could not find a run directory for nick: {args.model_nick}")
+                else:
+                    model_path = resolve_model_path_from_run_dir(model_dir)
+                    if not model_path:
+                        raise ValueError(f"Found run dir but no model zip inside: {model_dir}")
+            else:
+                raise ValueError("--test requires --model-path (e.g. runs/.../best_model.zip)")
+        else:
+            model_path = args.model_path
         
-        conf["car_name"] = 'TEST'#f'{conf["car_name"]}_TEST'
+        if args.model_nick:
+            conf["car_name"] = args.model_nick
+        else:
+            conf["car_name"] = f'TEST'
         
         env = gym.make(args.env_name, conf=conf)
         try:
-            model = PPO.load(args.model_path)
+            model = PPO.load(model_path)
 
             obs = env.reset()
             for _ in range(eval_timesteps):
@@ -164,7 +185,7 @@ if __name__ == "__main__":
 
                 cte = extract_cte(info)
                 if (_ % 20 == 0) and (cte is not None):
-                    print(f"[TEST t={_:06d}] cte={cte:+.3f} reward={reward:.3f}")
+                    print(f"[TEST t={_:06d}] cte={cte:+.3f}, steer={action[0]}, thr={action[1]}, reward={reward:.3f}")
 
                 # env.render() # Donkey Sim is already rendering so this is likely redundant.
                 if done:
@@ -198,6 +219,7 @@ if __name__ == "__main__":
 
             cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
             ep_reward_logger = EpisodeRewardLogger()
+            act_cb = ActionStatsCallback(print_every_steps=100)
 
             if not args.no_early_stop:
                 stop_callback = StopTrainingOnRewardThreshold(reward_threshold=EARLY_STOPPING_THRESHOLD, verbose=1)
@@ -220,7 +242,7 @@ if __name__ == "__main__":
                                                      save_replay_buffer=False,
                                                      save_vecnormalize=False)
 
-            callback = CallbackList([cte_cb, eval_callback, ep_reward_logger, checkpoint_callback])
+            callback = CallbackList([cte_cb, eval_callback, ep_reward_logger, checkpoint_callback, act_cb])
             crash_path = os.path.join(log_dir, "crash_checkpoint")
             final_path = os.path.join(log_dir, "final")
 
