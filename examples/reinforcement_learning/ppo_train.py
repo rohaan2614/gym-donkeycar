@@ -39,6 +39,9 @@ from names_generator import generate_name
 
 import traceback
 
+import imageio
+import json
+
 
 if __name__ == "__main__":
     env_list = [
@@ -115,7 +118,10 @@ if __name__ == "__main__":
         help="Optional run name, otherwise auto-generated.",
     )
     parser.add_argument("--no-early-stop", action="store_true", help="Disable early stopping.")
-
+    parser.add_argument("--save-metadata", dest="save_metadata", action="store_true", default=True,
+                    help="Save image frames + JSON metadata (default: on)")
+    parser.add_argument("--no-save-metadata", dest="save_metadata", action="store_false",
+                        help="Disable saving image frames + JSON metadata")
     parser.add_argument(
         "--model-nick",
         type=str,
@@ -158,6 +164,8 @@ if __name__ == "__main__":
     n_eval_episodes = args.n_evaluation_episodes
 
     EARLY_STOPPING_THRESHOLD = float(args.early_stopping_threshold)
+    save_frame_every = max(1, int(args.save_frame_every_steps))
+    save_metadata = args.save_metadata
 
     if args.test:
         # >>>>>>>>>>>>>>>>>>>>>>>>>>>> TEST MODE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -179,6 +187,17 @@ if __name__ == "__main__":
             conf["car_name"] = args.model_nick
         else:
             conf["car_name"] = f'TEST'
+
+        if save_metadata:
+            frame_root = os.path.join(
+                "test_frames",
+                f"{args.model_nick or 'model'}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+            )
+            os.makedirs(frame_root, exist_ok=True)
+
+            print(f"[TEST] Saving frames to: {frame_root}")
+        else:
+            print('[TEST] save-metadata flag set to FALSE.')
         
         env = gym.make(args.env_name, conf=conf)
         try:
@@ -190,14 +209,38 @@ if __name__ == "__main__":
                 obs, reward, done, info = env.step(action)
 
                 cte = extract_cte(info)
+
                 if cte is not None:
-                # if (_ % 20 == 0) and (cte is not None):
                     print(f"[TEST t={_:06d}] cte={cte:+.3f}, steer={action[0]:.3f}, thr={action[1]:.3f}, reward={reward:.3f}")
 
                 if done:
-                    # print(f"[TEST t={_:06d}] done={done}, info={info}")
                     print(f"[TEST t={_:06d}] done={done}, hit={info['hit']}, cte_crossed={abs(info['cte']) > args.max_cte}")
-                    obs = env.reset()
+                    
+                if ((_ % save_frame_every == 0) or (done)) and (save_metadata):
+                    frame_path = os.path.join(frame_root, f'frame_{_:06d}.png')
+                    meta_path = os.path.join(frame_root, f'frame_{_:06d}.json')
+
+                    imageio.imwrite(frame_path, obs)
+
+                    meta = {
+                        "timestep": _,
+                        "steer": float(action[0]),
+                        "throttle": float(action[1]),
+                        "reward": float(reward),
+                        "cte": float(cte) if cte is not None else None,
+                        "done": bool(done),
+                        "hit": info.get("hit", None),
+                        "speed": info.get("speed", None),
+                        "cte_crossed": (
+                            cte is not None and abs(cte) > args.max_cte
+                        ),
+                    }
+
+                    with open(meta_path, "w") as f:
+                        json.dump(meta, f, indent=2)
+
+                if done: obs = env.reset()
+                
         finally:
             env.close()
 
@@ -283,3 +326,37 @@ if __name__ == "__main__":
                 env.close()
             except Exception:
                 pass
+
+
+
+
+
+saved_steps = set()
+
+def save_frame(t, obs, action, reward, done, info, reason: str):
+    """Save obs as PNG + paired JSON metadata. `reason` helps later filtering."""
+    if t in saved_steps:
+        return
+    saved_steps.add(t)
+
+    frame_path = os.path.join(frame_root, f"frame_{t:06d}.png")
+    meta_path  = os.path.join(frame_root, f"frame_{t:06d}.json")
+
+    imageio.imwrite(frame_path, obs)
+
+    cte = extract_cte(info)
+    meta = {
+        "timestep": int(t),
+        "reason": reason,  # "periodic" or "terminal"
+        "steer": float(action[0]),
+        "throttle": float(action[1]),
+        "reward": float(reward),
+        "cte": float(cte) if cte is not None else None,
+        "done": bool(done),
+        "hit": info.get("hit", None),
+        "speed": info.get("speed", None),
+        "max_cte": int(args.max_cte),
+        "cte_crossed": (cte is not None and abs(cte) > args.max_cte),
+    }
+    with open(meta_path, "w") as f:
+        json.dump(meta, f, indent=2)

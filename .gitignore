@@ -111,3 +111,4 @@ ENV/
 ppo_donkey.zip
 runs/*
 unitylog.txt
+test_frames/*
