@@ -122,6 +122,11 @@ if __name__ == "__main__":
         default=None,
         help="Optional instead of model path, provide the shorter model-nick.",
     )
+    parser.add_argument(
+    "--save-frame-every-steps",
+    type=int,
+    default=5,
+    help="(test mode) save an observation frame every N steps")
 
     args = parser.parse_args()
 
@@ -155,6 +160,7 @@ if __name__ == "__main__":
     EARLY_STOPPING_THRESHOLD = float(args.early_stopping_threshold)
 
     if args.test:
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>> TEST MODE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if args.model_path is None:
             if args.model_nick:
                 model_dir = find_model_dir(keyword=args.model_nick)
@@ -184,16 +190,19 @@ if __name__ == "__main__":
                 obs, reward, done, info = env.step(action)
 
                 cte = extract_cte(info)
-                if (_ % 20 == 0) and (cte is not None):
-                    print(f"[TEST t={_:06d}] cte={cte:+.3f}, steer={action[0]}, thr={action[1]}, reward={reward:.3f}")
+                if cte is not None:
+                # if (_ % 20 == 0) and (cte is not None):
+                    print(f"[TEST t={_:06d}] cte={cte:+.3f}, steer={action[0]:.3f}, thr={action[1]:.3f}, reward={reward:.3f}")
 
-                # env.render() # Donkey Sim is already rendering so this is likely redundant.
                 if done:
+                    # print(f"[TEST t={_:06d}] done={done}, info={info}")
+                    print(f"[TEST t={_:06d}] done={done}, hit={info['hit']}, cte_crossed={abs(info['cte']) > args.max_cte}")
                     obs = env.reset()
         finally:
             env.close()
 
     else:
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>>> TRAIN MODE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
         if int(eval_freq) > -1:
             error_message = 'eval freq is problematic and needs to be fixed. Please use eval_freq = -1'
             print(error_message)

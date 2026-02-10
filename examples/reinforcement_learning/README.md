@@ -10,6 +10,11 @@
     `(donkey) $ python examples/reinforcement_learning/ppo_train.py --sim /home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64 --env_name donkey-warren-track-v0 --test --model-path runs/env_donkey-warren-track-v0/max_cte_10/train_100000/20260122_153939/best_model.zip`
 
 
+* Can also use model nick if you don't want to ype out the full model path:
+
+    `python examples/reinforcement_learning/ppo_train.py --sim /home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64 --env_name donkey-warren-track-v0 --test --model-nick ugisu_3 --port 9090 --eval-timesteps 10000 --max_cte 15`
+
+
 # Tensorboard Server
 
 `tensorboard --logdir runs/`
