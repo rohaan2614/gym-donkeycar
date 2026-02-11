@@ -29,8 +29,7 @@ import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList, CheckpointCallback
 
-# from helpers import (extract_cte, CTETrainingLogger, EpisodeRewardLogger, 
-#                      ActionStatsCallback, find_model_dir, resolve_model_path_from_run_dir)
+from funny_helpers import CTETrainingLogger, EpisodeRewardLogger, ActionStatsCallback
 from names_generator import generate_name
 
 import traceback
@@ -155,9 +154,9 @@ if __name__ == "__main__":
                     verbose=1,
                     device='cpu' if args.force_cpu_training else 'auto')
 
-        # cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
-        # ep_reward_logger = EpisodeRewardLogger()
-        # act_cb = ActionStatsCallback(print_every_steps=100)
+        cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
+        ep_reward_logger = EpisodeRewardLogger()
+        act_cb = ActionStatsCallback(print_every_steps=100)
 
          # TODO: evaluate after every few training runs (fix eval_freq & n_eval_episodes)
 
@@ -166,15 +165,15 @@ if __name__ == "__main__":
                                                  name_prefix="training_checkpoint",
                                                  verbose=1)
 
-        # callback = CallbackList([cte_cb, eval_callback, ep_reward_logger, checkpoint_callback, act_cb])
+        callback = CallbackList([cte_cb, ep_reward_logger, checkpoint_callback, act_cb])
         crash_path = os.path.join(log_dir, "crash_checkpoint")
         final_path = os.path.join(log_dir, "final")
 
         try:
             # model.train(+)
             model.learn(total_timesteps=training_timesteps,
-                        callback=checkpoint_callback,
-                        log_interval=20,
+                        callback=callback,
+                        log_interval=100,
                         tb_log_name=f'A2C_{run_name}')
             print(f'[TRAIN] training completed...')
         except Exception as e:
