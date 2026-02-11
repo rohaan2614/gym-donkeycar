@@ -152,7 +152,8 @@ if __name__ == "__main__":
         model = A2C(policy='CnnPolicy', #Mlp policy is for vector inputs
                     env=env,
                     verbose=1,
-                    device='cpu' if args.force_cpu_training else 'auto')
+                    device='cpu' if args.force_cpu_training else 'auto',
+                    tensorboard_log="runs")
 
         cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
         ep_reward_logger = EpisodeRewardLogger()
