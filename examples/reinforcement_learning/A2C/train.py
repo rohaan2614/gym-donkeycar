@@ -29,8 +29,9 @@ import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import A2C
 from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList, CheckpointCallback
 
-from funny_helpers import CTETrainingLogger, EpisodeRewardLogger, ActionStatsCallback
-from names_generator import generate_name
+from funny_helpers import EpisodeRewardLogger
+from stats_callback import StatsCallback
+from coolname import generate_slug
 
 import traceback
 
@@ -58,7 +59,7 @@ if __name__ == "__main__":
     #####################
     parser.add_argument("--sim", type=str, default="/home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64",
         help="path to unity simulator. maybe be left at manual if you would like to start the sim on your own.")
-    parser.add_argument("--port", type=int, default=9091, help="port to use for tcp")
+    parser.add_argument("-p", "--port", type=int, default=9091, help="port to use for tcp")
     #####################
 
     #####################
@@ -73,7 +74,7 @@ if __name__ == "__main__":
     #####################
     parser.add_argument("-t", "--timesteps", type=int, default=50000,
         help="number of timesteps the agent interacts with the environment in training" )
-    parser.add_argument('--lr', type=float, default=0.003, help='learning rate of the model')
+    parser.add_argument('--entropy-coef', type=float, default=0)
     #####################
     
     #####################
@@ -111,9 +112,9 @@ if __name__ == "__main__":
 
     # Constants
     training_timesteps = args.timesteps
-    learning_rate = args.lr
+    entropy_coefficient = args.entropy_coef
     env_id = args.env_name
-    run_name = args.run_name or generate_name()
+    run_name = args.run_name or generate_slug(2).split('-')[-1]
     # TODO: evaluate after every few training runs (fix eval_freq & n_eval_episodes)
     eval_freq = args.eval_freq
     n_eval_episodes = args.n_evaluation_episodes
@@ -124,11 +125,13 @@ if __name__ == "__main__":
         "host": "127.0.0.1",
         "port": args.port,
         "body_style": "donkey",
+        # TODO: Experiment with (120, 160, 3)
         "body_rgb": (128, 128, 128),
         "font_size": 100,
         "racer_name": f"{run_name}_{model_name}",
         "guid": str(uuid.uuid4()),
         "max_cte": args.max_cte,
+        # "time_scale": 10.0,  # 3x faster than real time
     }
 
     # >>>>>>>>>>>>>>>>>>>>>>>>>>>> TRAIN MODE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
@@ -145,37 +148,44 @@ if __name__ == "__main__":
 
     env = gym.make(args.env_name, conf=conf)
     print('Environment created...')
+    print(f'action_space: {env.action_space}')
+    print(f'action_space LOW: {env.action_space.low}')
+    print(f'action_space HIGH: {env.action_space.high}')
+    print(f'env Meta Data: {env.metadata}')
+    print(f'env Reward Range: {env.reward_range}')
+    print(f'env Observation Space: {env.observation_space}')
+
 
     stop_callback = None
 
     try:
         model = A2C(policy='CnnPolicy', #Mlp policy is for vector inputs
                     env=env,
-                    verbose=1,
+                    verbose=0,
                     device='cpu' if args.force_cpu_training else 'auto',
-                    tensorboard_log="runs")
+                    tensorboard_log="runs",
+                    ent_coef=entropy_coefficient)
 
-        cte_cb = CTETrainingLogger(tb_every_steps=50, print_every_steps=500, verbose=0)
         ep_reward_logger = EpisodeRewardLogger()
-        act_cb = ActionStatsCallback(print_every_steps=100)
+        stats_callback = StatsCallback(print_every_steps=100)
 
          # TODO: evaluate after every few training runs (fix eval_freq & n_eval_episodes)
 
         checkpoint_callback = CheckpointCallback(save_freq=20_000,
                                                  save_path=log_dir,
                                                  name_prefix="training_checkpoint",
-                                                 verbose=1)
+                                                 verbose=0)
 
-        callback = CallbackList([cte_cb, ep_reward_logger, checkpoint_callback, act_cb])
+        callback = CallbackList([ep_reward_logger, checkpoint_callback, stats_callback])
         crash_path = os.path.join(log_dir, "crash_checkpoint")
         final_path = os.path.join(log_dir, "final")
 
         try:
-            # model.train(+)
+            print('model.action_space:', model.action_space)
             model.learn(total_timesteps=training_timesteps,
                         callback=callback,
                         log_interval=100,
-                        tb_log_name=f'A2C_{run_name}')
+                        tb_log_name=run_id)
             print(f'[TRAIN] training completed...')
         except Exception as e:
             print("\n[TRAIN] CRASHED:", repr(e))

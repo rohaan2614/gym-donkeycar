@@ -137,6 +137,7 @@ class DonkeyEnv(gym.Env):
         return observation, reward, done, info
 
     def reset(self) -> np.ndarray:
+        # print(">>> DonkeyEnv.reset() called")
         # Activate hand brake, so the car does not move
         self.viewer.handler.send_control(0, 0, 1.0)
         time.sleep(0.1)

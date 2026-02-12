@@ -60,33 +60,14 @@ class EpisodeRewardLogger(BaseCallback):
 
     def _on_step(self):
         self.ep_reward += float(self.locals['rewards'][0])
+        step_rew = float(self.locals['rewards'][0])
+        self.logger.record("train/step_reward", step_rew)
 
         dones = self.locals['dones']
         if dones[0]:
             self.logger.record('rollout/ep_rew_total', self.ep_reward)
             self.__reset_reward()
             
-        return True
-
-class ActionStatsCallback(BaseCallback):
-    def __init__(self, print_every_steps=500):
-        super().__init__()
-        self.print_every_steps = print_every_steps
-
-    def _on_step(self) -> bool:
-        if self.n_calls % self.print_every_steps == 0:
-            acts = self.locals.get("actions", None)
-            if acts is not None:
-                a = np.array(acts)
-                # expecting action = [steering, throttle]
-                if a.ndim >= 2 and a.shape[-1] >= 2:
-                    print(
-                        f"[ACT] t={self.model.num_timesteps} "
-                        f"steer_mean={a[...,0].mean():+.3f} "
-                        f"thr_mean={a[...,1].mean():+.3f} "
-                        f"thr_min={a[...,1].min():+.3f} "
-                        f"thr_max={a[...,1].max():+.3f}"
-                    )
         return True
     
 

@@ -81,7 +81,7 @@ class ActionStatsCallback(BaseCallback):
                 # expecting action = [steering, throttle]
                 if a.ndim >= 2 and a.shape[-1] >= 2:
                     print(
-                        f"[ACT] t={self.model.num_timesteps} "
+                        f"t={self.model.num_timesteps} "
                         f"steer_mean={a[...,0].mean():+.3f} "
                         f"thr_mean={a[...,1].mean():+.3f} "
                         f"thr_min={a[...,1].min():+.3f} "
