@@ -30,3 +30,16 @@ An example using stable-baselines to train a PPO agent using the gym-donkeycar e
 An example training a [deep double Q-learning](https://arxiv.org/abs/1509.06461) agent using the gym-donkeycar environment
 
 * ```python gym-donkeycar/examples/reinforcement_learning/ddqn.py --sim <path to simulator>``` -->
+
+
+
+# Common gym-donkey car issue
+
+⚠️ Important: Install gym-donkeycar in Editable Mode
+
+If you cloned this repository, make sure you do not use the pip-installed version of gym-donkeycar, as it may cause environment registration mismatches (e.g., Environment ... doesn't exist errors).
+
+Instead, uninstall any existing version and install the repo in editable mode:
+```pip uninstall gym-donkeycar -y
+pip install -e .
+```
