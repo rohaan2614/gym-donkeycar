@@ -63,6 +63,10 @@ if __name__ == "__main__":
     #####################
 
     #####################
+    parser.add_argument("--resume-from", type=str, default=None, help="Path to checkpoint (without .zip) to resume training from")
+    #####################
+
+    #####################
     #TODO: fix/build this
     # parser.add_argument("--multi", action="store_true", help="start multiple sims at once")
     #####################
@@ -110,110 +114,149 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    # Constants
+    # -------------------------------------------------
+    # Core constants
+    # -------------------------------------------------
     training_timesteps = args.timesteps
-    # entropy_coefficient = args.entropy_coef
     seed = args.seed
     env_id = args.env_name
-    run_name = args.run_name or generate_slug(2).split('-')[-1]
-    # TODO: evaluate after every few training runs (fix eval_freq & n_eval_episodes)
-    eval_freq = args.eval_freq
-    n_eval_episodes = args.n_evaluation_episodes
-    stop_early_at = float(args.early_stopping_threshold)
 
+    # -------------------------------------------------
+    # Determine run identity (Resume or Fresh)
+    # -------------------------------------------------
+    if args.resume_from is not None:
+
+        checkpoint_path = args.resume_from
+
+        if not os.path.exists(checkpoint_path + ".zip"):
+            raise FileNotFoundError(
+                f"Checkpoint not found at {checkpoint_path}.zip"
+            )
+
+        log_dir = os.path.dirname(checkpoint_path)
+        run_name = os.path.basename(log_dir)
+        run_id = log_dir.replace("runs/", "")
+        reset_timesteps = False
+
+        print(f"[INFO] Resuming from: {checkpoint_path}.zip")
+        print(f"[INFO] Extracted run_name: {run_name}")
+        print(f"[INFO] Reusing log_dir: {log_dir}")
+
+    else:
+
+        run_name = args.run_name or generate_slug(2).split("-")[-1]
+        run_id = (
+            f"env_{env_id}/model_{model_name}/"
+            f"train_{training_timesteps}-"
+            f"{datetime.now().strftime('%Y%m%d_%H%M%S')}/"
+            f"{run_name}"
+        )
+
+        log_dir = os.path.join("runs", run_id)
+        os.makedirs(log_dir, exist_ok=True)
+        reset_timesteps = True
+
+        print("[INFO] Training from scratch.")
+        print(f"[INFO] New run_id: {run_id}")
+
+    # -------------------------------------------------
+    # Environment Configuration
+    # -------------------------------------------------
     conf = {
         "exe_path": args.sim,
         "host": "127.0.0.1",
         "port": args.port,
         "body_style": "donkey",
-        # TODO: Experiment with (120, 160, 3)
         "body_rgb": (128, 128, 128),
         "font_size": 100,
         "racer_name": f"{run_name}_{model_name}",
         "guid": str(uuid.uuid4()),
         "max_cte": args.max_cte,
-        # "time_scale": 10.0,  # 3x faster than real time
     }
 
-    # >>>>>>>>>>>>>>>>>>>>>>>>>>>> TRAIN MODE <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
-    if int(eval_freq) > -1:
-        error_message = 'eval freq is problematic and needs to be fixed. Please use eval_freq = -1'
-        print(error_message)
-        raise(error_message)
-    
-    conf["car_name"] = f'{model_name}_{run_name}'
+    conf["car_name"] = f"{model_name}_{run_name}"
 
-    run_id = f"env_{env_id}/model_{model_name}/train_{training_timesteps}-{datetime.now().strftime('%Y%m%d_%H%M%S')}/{run_name}"
-    log_dir = os.path.join("runs", run_id)
-    os.makedirs(log_dir, exist_ok=True)
+    # -------------------------------------------------
+    # Create Environment
+    # -------------------------------------------------
+    env = gym.make(env_id, conf=conf)
 
-    env = gym.make(args.env_name, conf=conf)
-    print('Environment created...')
-    print(f'action_space: {env.action_space}')
-    print(f'action_space LOW: {env.action_space.low}')
-    print(f'action_space HIGH: {env.action_space.high}')
-    print(f'env Meta Data: {env.metadata}')
-    print(f'env Reward Range: {env.reward_range}')
-    print(f'env Observation Space: {env.observation_space}')
+    print("Environment created.")
+    print(f"Action space: {env.action_space}")
+    print(f"Observation space: {env.observation_space}")
 
-
-    stop_callback = None
-
+    # -------------------------------------------------
+    # Training
+    # -------------------------------------------------
     try:
-        model = SAC(policy='CnnPolicy',
-                    env=env,
-                    learning_rate=3e-4,
-                    buffer_size=int(3e5),
-                    learning_starts=500,
-                    batch_size=256,
-                    tau=0.005,
-                    gamma=.99,
-                    # n_steps=int(1e6),
-                    seed=seed,
-                    tensorboard_log="runs",  
-                    )                        
 
+        if args.resume_from is not None:
+            model = SAC.load(
+                args.resume_from,
+                env=env,
+                seed=seed,
+                tensorboard_log="runs"
+            )
+            print("[INFO] Continuing training (reset_num_timesteps=False)")
+
+        else:
+            model = SAC(
+                policy="CnnPolicy",
+                env=env,
+                learning_rate=3e-4,
+                buffer_size=int(3e5),
+                learning_starts=500,
+                batch_size=256,
+                tau=0.005,
+                gamma=0.99,
+                seed=seed,
+                tensorboard_log="runs",
+            )
+
+        # Callbacks
         ep_reward_logger = EpisodeRewardLogger()
         stats_callback = StatsCallback(print_every_steps=100)
 
-         # TODO: evaluate after every few training runs (fix eval_freq & n_eval_episodes)
+        checkpoint_callback = CheckpointCallback(
+            save_freq=20_000,
+            save_path=log_dir,
+            name_prefix="training_checkpoint",
+            verbose=0
+        )
 
-        checkpoint_callback = CheckpointCallback(save_freq=20_000,
-                                                 save_path=log_dir,
-                                                 name_prefix="training_checkpoint",
-                                                 verbose=0)
+        callback = CallbackList([
+            ep_reward_logger,
+            checkpoint_callback,
+            stats_callback
+        ])
 
-        callback = CallbackList([ep_reward_logger, checkpoint_callback, stats_callback])
         crash_path = os.path.join(log_dir, "crash_checkpoint")
         final_path = os.path.join(log_dir, "final")
 
+        # Train
+        model.learn(
+            total_timesteps=training_timesteps,
+            callback=callback,
+            log_interval=100,
+            tb_log_name=run_id,
+            reset_num_timesteps=reset_timesteps
+        )
+
+        model.save(final_path)
+        print(f"[TRAIN] Completed. Final model saved at {final_path}.zip")
+
+    except Exception as e:
+        print("\n[TRAIN] CRASHED:", repr(e))
+        traceback.print_exc()
+
         try:
-            print('model.action_space:', model.action_space)
-            model.learn(total_timesteps=training_timesteps,
-                        callback=callback,
-                        log_interval=100,
-                        tb_log_name=run_id)
-            print(f'[TRAIN] training completed...')
-        except Exception as e:
-            print("\n[TRAIN] CRASHED:", repr(e))
-            traceback.print_exc()
-            
-            # last-ditch save effort
-            try:
-                model.save(crash_path)
-                print(f'Model Saved at: {crash_path}.zip')
-            except Exception as e2:
-                print('Failed to save model because of exception:', str(e2))
-            raise
-        else:
-            model.save(final_path)
-            print(f'Model (final) Saved at: {final_path}.zip')
+            model.save(crash_path)
+            print(f"[TRAIN] Crash checkpoint saved at {crash_path}.zip")
+        except Exception as e2:
+            print("Failed to save crash checkpoint:", str(e2))
+
+        raise
 
     finally:
-        # Close envs cleanly
-        try:
-            print(f'Process Completed. Closing Env.')
-            env.close()
-        except Exception:
-            pass
-
+        print("Closing environment.")
+        env.close()

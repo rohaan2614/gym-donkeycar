@@ -20,7 +20,7 @@ class StatsCallback(BaseCallback):
         self._fwd_buf = []
         self._lap_time_buf = []
         self._lap_count_buf = []
-        self._critic_buf = []
+        # self._critic_buf = []
 
     def _on_step(self) -> bool:
         # ----------------------------
@@ -42,18 +42,18 @@ class StatsCallback(BaseCallback):
         # ----------------------------
         # CRITIC VALUE
         # ----------------------------
-        values = self.locals.get("values", None)
-        if values is not None:
-            try:
-                v = values.detach().cpu().numpy()
-            except Exception:
-                v = np.asarray(values)
-            v = np.asarray(v, dtype=float).reshape(-1)
-            critic_val = float(v[0]) if v.size > 0 else np.nan
-        else:
-            critic_val = np.nan
+        # values = self.locals.get("values", None)
+        # if values is not None:
+        #     try:
+        #         v = values.detach().cpu().numpy()
+        #     except Exception:
+        #         v = np.asarray(values)
+        #     v = np.asarray(v, dtype=float).reshape(-1)
+        #     critic_val = float(v[0]) if v.size > 0 else np.nan
+        # else:
+        #     critic_val = np.nan
 
-        self._critic_buf.append(critic_val)
+        # self._critic_buf.append(critic_val)
 
         # ----------------------------
         # INFO (env telemetry)
@@ -85,7 +85,7 @@ class StatsCallback(BaseCallback):
             lap_time_mean = float(np.nanmean(self._lap_time_buf))
             lap_count_max = int(np.nanmax(self._lap_count_buf))
             
-            critic_mean = float(np.nanmean(self._critic_buf))
+            # critic_mean = float(np.nanmean(self._critic_buf))
 
             # TensorBoard
             self.logger.record("action/steer_mean", steer_mean)
@@ -98,7 +98,7 @@ class StatsCallback(BaseCallback):
             self.logger.record("info/last_lap_time_mean", lap_time_mean)
             self.logger.record("info/lap_count_max", lap_count_max)
 
-            self.logger.record("train/critic_value_mean", critic_mean)
+            # self.logger.record("train/critic_value_mean", critic_mean)
 
             if self.verbose:
                 print(
@@ -107,7 +107,6 @@ class StatsCallback(BaseCallback):
                     f"thr_mean={thr_mean:+.3f} thr_min={thr_min:+.3f} thr_max={thr_max:+.3f} "
                     f"| [INFO] cte_mean={cte_mean:+.3f} fwd_mean={fwd_mean:+.3f} "
                     f"lap_time_mean={lap_time_mean:.3f} laps_max={lap_count_max:.0f} "
-                    f"| [CRITIC] value_mean={critic_mean:+.3f}"
                 )
 
             # clear buffers
@@ -117,6 +116,6 @@ class StatsCallback(BaseCallback):
             self._fwd_buf.clear()
             self._lap_time_buf.clear()
             self._lap_count_buf.clear()
-            self._critic_buf.clear()
+            # self._critic_buf.clear()
 
         return True

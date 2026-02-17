@@ -1,18 +1,25 @@
 # Reinforcement Learning
 
-## ppo_train.py
+## train.py
 * To train, run: 
 
-    `(donkey) $ python examples/reinforcement_learning/A2C/train.py -t 1_000_000`
+    `(donkey) $ python examples/reinforcement_learning/SAC/train.py -t 2_000_000 --max-cte 15 --run-name owl-12 -p 9097`
 
+* Can also resume training from a checkpoint (checkpoints after the provided checkpoint will be overwritten):
+
+    `(donkey) $ python examples/reinforcement_learning/SAC/train.py --port 9091 --resume-from runs/env_donkey-warren-track-v0/model_sac/train_2000000-20260213_110310/owl-24/training_checkpoint_340000_steps`
+
+
+
+## test.py
 * To run the trained agent, run: 
     
-    `(donkey) $ python examples/reinforcement_learning/A2C/test.py --model-path runs/env_donkey-warren-track-v0/model_a2c/train_50000-20260211_144544/hardcore_solomon/training_checkpoint_40000_steps.zip`
+    
 
 
-* Can also use model nick if you don't want to ype out the full model path:
+* Can also use model nick if you don't want to type out the full model path:
 
-    `$ python examples/reinforcement_learning/A2C/test.py --model-nick hardcore_solomon`
+    
 
 
 # Tensorboard Server
