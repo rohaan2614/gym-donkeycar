@@ -71,24 +71,13 @@ if __name__ == "__main__":
     #####################
 
     #####################
-    #TODO: fix/build this
-    # parser.add_argument("--multi", action="store_true", help="start multiple sims at once")
-    #####################
-
-    #####################
     parser.add_argument("--env_name", type=str, default="donkey-warren-track-v0", help="name of donkey sim environment",
     choices=env_list)
-    
     #####################
     parser.add_argument("-t", "--timesteps", type=int, default=50000,
         help="number of timesteps the agent interacts with the environment in training" )
-    parser.add_argument('--entropy-coef', type=float, default=0)
     #####################
     
-    #####################
-    parser.add_argument("--eval_freq", type=int, default=-1, help="run evaluation every N training timesteps")
-    parser.add_argument("--n_evaluation_episodes", type=int, default=1, help="run evaluation for N episodes")
-    #####################
     
     #####################
     parser.add_argument("--early_stopping_threshold", type=float, default=1000.0, help="threshold for early stopping")
@@ -113,13 +102,6 @@ if __name__ == "__main__":
     #####################
     parser.add_argument("--force-cpu", dest="force_cpu_training", action="store_true", default=False,
                     help="Force to train on CPU (a2c is intended for cpu trainging)")
-    #####################
-    
-    #####################
-    parser.add_argument("--headless", action="store_true", default=True,
-    help="Run without any client-side rendering/windows (default: on)")
-    parser.add_argument("--no-headless", dest="headless", action="store_false",
-        help="Enable client-side rendering/windows")
     #####################
     
     args = parser.parse_args()
@@ -184,7 +166,6 @@ if __name__ == "__main__":
     }
 
     conf["car_name"] = f"{model_name}_{run_name}"
-    conf["headless"] = args.headless
     
     if args.manual_sim:
         conf["exe_path"] = ""
