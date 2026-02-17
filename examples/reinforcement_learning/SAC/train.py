@@ -98,11 +98,6 @@ if __name__ == "__main__":
     parser.add_argument("--disable-metadata-saving", dest="save_metadata", action="store_false",
                         help="Disable saving image frames + JSON metadata")
     #####################
-
-    #####################
-    parser.add_argument("--force-cpu", dest="force_cpu_training", action="store_true", default=False,
-                    help="Force to train on CPU (a2c is intended for cpu trainging)")
-    #####################
     
     args = parser.parse_args()
 
