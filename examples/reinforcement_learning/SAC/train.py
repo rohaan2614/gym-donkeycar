@@ -58,6 +58,9 @@ if __name__ == "__main__":
     #####################
     parser.add_argument("--sim", type=str, default="/home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64",
         help="path to unity simulator. maybe be left at manual if you would like to start the sim on your own.")
+    parser.add_argument("--manual-sim", action="store_true", default=False,
+        help="Do not auto-launch Unity from Python; assume you started it yourself")
+    
     parser.add_argument("-p", "--port", type=int, default=9091, help="port to use for tcp")
     parser.add_argument("--seed", type=int, default=1947, help="seed for stochasticity")
     #####################
@@ -107,8 +110,22 @@ if __name__ == "__main__":
     #####################
 
     #####################
-    parser.add_argument("--force-cpu", dest="force_cpu_training", action="store_true", default=True,
+    parser.add_argument("--force-cpu", dest="force_cpu_training", action="store_true", default=False,
                     help="Force to train on CPU (a2c is intended for cpu trainging)")
+    #####################
+    
+    #####################
+    parser.add_argument("--headless", action="store_true", default=True,
+    help="Run without any client-side rendering/windows (default: on)")
+    parser.add_argument("--no-headless", dest="headless", action="store_false",
+        help="Enable client-side rendering/windows")
+    #####################
+    
+    #####################
+    parser.add_argument("--unity-headless", action="store_true", default=True,
+        help="When auto-launching Unity, request -batchmode/-nographics (default: on)")
+    parser.add_argument("--no-unity-headless", dest="unity_headless", action="store_false",
+        help="When auto-launching Unity, do not request -batchmode/-nographics")
     #####################
 
 
@@ -175,6 +192,15 @@ if __name__ == "__main__":
     }
 
     conf["car_name"] = f"{model_name}_{run_name}"
+    conf["headless"] = args.headless
+    
+    if args.manual_sim:
+        conf["exe_path"] = None  # or "" depending on your gym-donkeycar version
+    else:
+        conf["exe_path"] = args.sim
+        
+    if args.unity_headless and (not args.manual_sim):
+        conf["sim_args"] = ["-batchmode", "-nographics", "-logFile", os.path.join(log_dir, "sim.log")]
 
     # -------------------------------------------------
     # Create Environment
