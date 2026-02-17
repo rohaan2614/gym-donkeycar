@@ -11,6 +11,7 @@
 
 
 
+
 ## test.py
 * To run the trained agent, run: 
     
@@ -19,8 +20,22 @@
 
 * Can also use model nick if you don't want to type out the full model path:
 
-    
 
+## Headless
+
+* Run donkey Sim headless like this:
+    
+    `$ /home/rn7823/projects/DonkeySimLinux/donkey_sim.x86_64 -batchmode -nographics`
+
+    * You can confirm its running by:
+
+        `$ ps aux | grep donkey_sim`
+
+    * Then train.py like this:
+
+        `$ python examples/reinforcement_learning/SAC/train.py -t 1_000_000 --max-cte 8 --port 9091 --manual-sim`
+
+    * You can check your processes GPU consumption by combining `nvidia-smi` with `ps -fp <process number>`
 
 # Tensorboard Server
 

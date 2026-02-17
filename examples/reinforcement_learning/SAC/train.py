@@ -61,7 +61,8 @@ if __name__ == "__main__":
     parser.add_argument("--manual-sim", action="store_true", default=False,
         help="Do not auto-launch Unity from Python; assume you started it yourself")
     
-    parser.add_argument("-p", "--port", type=int, default=9091, help="port to use for tcp")
+    default_port = 9091
+    parser.add_argument("-p", "--port", type=int, default=default_port, help="port to use for tcp")
     parser.add_argument("--seed", type=int, default=1947, help="seed for stochasticity")
     #####################
 
@@ -121,14 +122,6 @@ if __name__ == "__main__":
         help="Enable client-side rendering/windows")
     #####################
     
-    #####################
-    parser.add_argument("--unity-headless", action="store_true", default=True,
-        help="When auto-launching Unity, request -batchmode/-nographics (default: on)")
-    parser.add_argument("--no-unity-headless", dest="unity_headless", action="store_false",
-        help="When auto-launching Unity, do not request -batchmode/-nographics")
-    #####################
-
-
     args = parser.parse_args()
 
     # -------------------------------------------------
@@ -180,7 +173,6 @@ if __name__ == "__main__":
     # Environment Configuration
     # -------------------------------------------------
     conf = {
-        "exe_path": args.sim,
         "host": "127.0.0.1",
         "port": args.port,
         "body_style": "donkey",
@@ -195,16 +187,14 @@ if __name__ == "__main__":
     conf["headless"] = args.headless
     
     if args.manual_sim:
-        conf["exe_path"] = None  # or "" depending on your gym-donkeycar version
+        conf["exe_path"] = ""
     else:
         conf["exe_path"] = args.sim
         
-    if args.unity_headless and (not args.manual_sim):
-        conf["sim_args"] = ["-batchmode", "-nographics", "-logFile", os.path.join(log_dir, "sim.log")]
-
     # -------------------------------------------------
     # Create Environment
     # -------------------------------------------------
+    print('ENV CONF:', conf)
     env = gym.make(env_id, conf=conf)
 
     print("Environment created.")
