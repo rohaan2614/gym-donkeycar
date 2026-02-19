@@ -1,4 +1,4 @@
-# TODO: populate this
+# TODO: make video recorder work
 """
 Do not forgot to run tensorboard like:
 tensorboard --logdir runs --host 127.0.0.1 --port 6006
@@ -26,16 +26,17 @@ for k,v in new_env_vars.items():
 import gym
 import gym_donkeycar  # registers donkey envs into gym
 from stable_baselines3 import SAC
-from stable_baselines3.common.callbacks import StopTrainingOnRewardThreshold, EvalCallback, CallbackList, CheckpointCallback
+from stable_baselines3.common.callbacks import (StopTrainingOnRewardThreshold, EvalCallback, 
+                                                CallbackList, CheckpointCallback)
 
 from funny_helpers import EpisodeRewardLogger
 from stats_callback import StatsCallback
+from observation_recorder import ObsVideoRecorder
+
 from coolname import generate_slug
 
-import traceback
 
-import imageio
-import json
+import traceback
 
 
 if __name__ == "__main__":
@@ -97,6 +98,12 @@ if __name__ == "__main__":
                     help="Save image frames + JSON metadata (default: on)")
     parser.add_argument("--disable-metadata-saving", dest="save_metadata", action="store_false",
                         help="Disable saving image frames + JSON metadata")
+    #####################
+
+    #####################
+    parser.add_argument("--record-feed", dest="save_feed", action="store_true")
+    parser.add_argument("--no-record-feed", dest="save_feed", action="store_false")
+    parser.set_defaults(save_feed=False)
     #####################
     
     args = parser.parse_args()
@@ -166,16 +173,23 @@ if __name__ == "__main__":
         conf["exe_path"] = ""
     else:
         conf["exe_path"] = args.sim
-        
+
+    print('ENV CONF:', conf)
     # -------------------------------------------------
     # Create Environment
     # -------------------------------------------------
-    print('ENV CONF:', conf)
     env = gym.make(env_id, conf=conf)
-
     print("Environment created.")
     print(f"Action space: {env.action_space}")
     print(f"Observation space: {env.observation_space}")
+
+    # # -------------------------------------------------
+    # # Observation Recorder
+    # # -------------------------------------------------
+    # if args.save_feed:
+    #     fps = 20
+    #     env = ObsVideoRecorder(env, video_dir=os.path.join(log_dir, "videos"), fps=fps)
+    #     print(f"Observation Video ({fps} fps) will be stored at: {log_dir}/videos")
 
     # -------------------------------------------------
     # Training
